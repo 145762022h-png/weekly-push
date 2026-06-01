@@ -224,6 +224,9 @@ def build_card(issue_num, title, chunk, part=None, total=None):
         }
     ]
 
+    # Strip markdown images - Feishu cards need image_key for actual images
+    chunk = re.sub(r"!\[.*?\]\(.*?\)", "[图片]", chunk)
+
     return {
         "config": {"wide_screen_mode": True},
         "header": {
@@ -286,7 +289,6 @@ def push_issue(issue_num, token):
         content = f.read()
 
     title = extract_title(content)
-    content = process_markdown_images(content, token)
     chunks = split_content(content)
     total = len(chunks)
     ok = True
