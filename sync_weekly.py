@@ -207,6 +207,9 @@ def build_card(issue_num, title, chunk, part=None, total=None):
     if total and total > 1:
         header_title += f" ({part}/{total})"
 
+    # Strip images - Feishu cards need image_key
+    chunk = re.sub(r"!\[.*?\]\(.*?\)", "[图片]", chunk)
+
     elements = [
         {"tag": "markdown", "content": chunk},
         {"tag": "hr"},
