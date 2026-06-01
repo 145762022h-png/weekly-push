@@ -292,6 +292,11 @@ def push_issue(issue_num, token):
         content = f.read()
 
     title = extract_title(content)
+    
+    # Send a test card first to verify connectivity
+    test_card = build_card(issue_num, title, "🎯 这是一条测试消息——如果你看到这条，说明飞书推送通道正常。", None, None)
+    send_card(test_card, token)
+    
     chunks = split_content(content)
     total = len(chunks)
     ok = True
