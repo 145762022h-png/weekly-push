@@ -111,6 +111,8 @@ def upload_image_to_feishu(image_url, token):
 
 def process_markdown_images(content, token):
     """Replace ![](url) with Feishu-compatible img_v3_{image_key} format."""
+    images = re.findall(r"!\[([^\]]*)\]\(([^)]+)\)", content)
+    print(f"Processing images... Found {len(images)} image(s) in issue", file=sys.stderr)
     pattern = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
 
     def replace(m):
@@ -260,6 +262,9 @@ def send_card(card, token):
                 if body.get("code") == 0:
                     return True
                 last_error = f"code={body.get('code')} msg={body.get('msg')}"
+        except urllib.error.HTTPError as e:
+            body = e.read().decode()[:300]
+            last_error = f"HTTP {e.code}: {body}"
         except Exception as e:
             last_error = str(e)
 
