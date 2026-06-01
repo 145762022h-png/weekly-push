@@ -54,6 +54,78 @@ def get_token():
     return None
 
 
+
+def create_multipart_form(fields, file_field, file_name, file_data, content_type):
+    """Build multipart/form-data body for Feishu image upload."""
+    import uuid
+    boundary = uuid.uuid4().hex
+    body = b""
+    for name, value in fields.items():
+        body += f"--{boundary}\r\n".encode("utf-8")
+        body += f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode("utf-8")
+        body += f"{value}\r\n".encode("utf-8")
+    body += f"--{boundary}\r\n".encode("utf-8")
+    body += f'Content-Disposition: form-data; name="{file_field}"; filename="{file_name}"\r\n'.encode("utf-8")
+    body += f"Content-Type: {content_type}\r\n\r\n".encode("utf-8")
+    body += file_data + b"\r\n"
+    body += f"--{boundary}--\r\n".encode("utf-8")
+    return boundary, body
+
+
+def upload_image_to_feishu(image_url, token):
+    """Download image from URL, upload to Feishu, return image_key or None."""
+    try:
+        req = urllib.request.Request(image_url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            image_data = resp.read()
+        if len(image_data) > 10 * 1024 * 1024:
+            print(f"Image too large, skip: {image_url[:80]}", file=sys.stderr)
+            return None
+        ct = resp.headers.get("Content-Type", "image/png")
+        ext = image_url.rsplit(".", 1)[-1].lower().split("?")[0]
+        if ext in ("jpg", "jpeg"): ct = "image/jpeg"
+        elif ext == "png": ct = "image/png"
+        elif ext == "gif": ct = "image/gif"
+        elif ext == "webp": ct = "image/webp"
+        fname = f"image.{ext if ext in ('jpg','jpeg','png','gif','webp') else 'png'}"
+        boundary, body = create_multipart_form(
+            {"image_type": "message"}, "image", fname, image_data, ct
+        )
+        req2 = urllib.request.Request(
+            "https://open.feishu.cn/open-apis/im/v1/images",
+            data=body,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": f"multipart/form-data; boundary={boundary}"
+            }
+        )
+        with urllib.request.urlopen(req2, timeout=30) as resp2:
+            result = json.loads(resp2.read())
+        if result.get("code") == 0:
+            return result["data"]["image_key"]
+        print(f"Feishu upload err: {result.get('msg')}", file=sys.stderr)
+    except Exception as e:
+        print(f"Image skip: {image_url[:80]} - {e}", file=sys.stderr)
+    return None
+
+
+def process_markdown_images(content, token):
+    """Replace ![](url) with Feishu-compatible img_v3_{image_key} format."""
+    pattern = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
+
+    def replace(m):
+        alt = m.group(1)
+        url = m.group(2)
+        if url.startswith("img_") or url.startswith("img_v3_"):
+            return m.group(0)
+        key = upload_image_to_feishu(url, token)
+        if key:
+            return f"![{alt}](img_v3_{key})"
+        return f"[图片: {alt or '无'}]"
+
+    return pattern.sub(replace, content)
+
+
 def clone_weekly():
     """Shallow-clone the weekly repo into CLONE_DIR."""
     if os.path.exists(CLONE_DIR):
@@ -209,6 +281,7 @@ def push_issue(issue_num, token):
         content = f.read()
 
     title = extract_title(content)
+    content = process_markdown_images(content, token)
     chunks = split_content(content)
     total = len(chunks)
     ok = True
