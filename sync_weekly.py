@@ -114,8 +114,11 @@ def process_markdown_images(content, token):
     images = re.findall(r"!\[([^\]]*)\]\(([^)]+)\)", content)
     print(f"Processing images... Found {len(images)} image(s) in issue", file=sys.stderr)
     pattern = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
+    count = [0]  # mutable counter
 
     def replace(m):
+        count[0] += 1
+        print(f"  [{count[0]}/{len(images)}] uploading...", file=sys.stderr)
         alt = m.group(1)
         url = m.group(2)
         if url.startswith("img_") or url.startswith("img_v3_"):
@@ -207,8 +210,8 @@ def build_card(issue_num, title, chunk, part=None, total=None):
     if total and total > 1:
         header_title += f" ({part}/{total})"
 
-    # Strip images - Feishu cards need image_key
-    chunk = re.sub(r"!\[.*?\]\(.*?\)", "[图片]", chunk)
+    # Strip any remaining external image URLs (process_markdown_images handles most)
+    chunk = re.sub(r"!\[([^\]]*)\]\(https?://[^)]+\)", r"[图片: \1]", chunk)
 
     elements = [
         {"tag": "markdown", "content": chunk},
@@ -292,11 +295,7 @@ def push_issue(issue_num, token):
         content = f.read()
 
     title = extract_title(content)
-    
-    # Send a test card first to verify connectivity
-    test_card = build_card(issue_num, title, "🎯 这是一条测试消息——如果你看到这条，说明飞书推送通道正常。", None, None)
-    send_card(test_card, token)
-    
+    content = process_markdown_images(content, token)
     chunks = split_content(content)
     total = len(chunks)
     ok = True
